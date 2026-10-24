@@ -80,11 +80,20 @@ truncation_length = 3
 truncation_symbol = '…/'
 truncate_to_repo = false
 home_symbol = '~'
+# 仓库根目录加下划线，保留蓝色；父路径使用普通字重。
+before_repo_root_style = 'blue'
+repo_root_style = 'bold underline blue'
+repo_root_format = '[ ]($style)[$before_root_path]($before_repo_root_style)[$repo_root]($repo_root_style)[$path]($style)[$read_only]($read_only_style) '
+# 三个平台统一用 /，并保留 cd 时使用的符号链接路径。
+use_os_path_sep = false
+use_logical_path = true
 
 [git_branch]
 symbol = ' '
 format = '[$symbol$branch]($style) '
 style = 'bold pink'
+# detached HEAD 时由 git_commit 显示哈希，避免重复显示 HEAD。
+only_attached = true
 
 # detached HEAD 时显示提交短哈希。
 [git_commit]
@@ -96,20 +105,33 @@ only_detached = true
 format = '[\($state( $progress_current/$progress_total)\)]($style) '
 style = 'bold purple'
 
-# 有变更时显示状态及数量，干净仓库不额外占位。
+# 需要 Starship >= 1.25：显式列出新变量，$all_status 不包含它们。
+# W = 工作区（未暂存）；S = 暂存区；干净时整组隐藏。
 [git_status]
-format = '([$all_status$ahead_behind]($style) )'
+format = '([$conflicted]($style) )([W:$worktree_added$worktree_modified$worktree_deleted$worktree_typechanged]($style) )([S:$index_added$index_modified$index_deleted$renamed$index_typechanged]($style) )([$untracked]($style) )([$stashed]($style) )([$ahead_behind]($style) )'
 style = 'bold yellow'
-conflicted = '≠${count} '
-ahead = '↑${count} '
-behind = '↓${count} '
-diverged = '↑${ahead_count} ↓${behind_count} '
-untracked = '?${count} '
-stashed = '≡${count} '
-modified = '!${count} '
-staged = '+${count} '
-renamed = '»${count} '
-deleted = '✘${count} '
+conflicted = '≠${count}'
+ahead = '↑${count}'
+behind = '↓${count}'
+diverged = '↑${ahead_count}↓${behind_count}'
+untracked = '?${count}'
+stashed = '≡${count}'
+# + 新增、! 修改、✘ 删除、» 重命名、~ 类型变化。
+# worktree_added 对应 git add -N；普通新文件由 untracked 单独计数。
+worktree_added = '+${count}'
+worktree_modified = '!${count}'
+worktree_deleted = '✘${count}'
+worktree_typechanged = '~${count}'
+index_added = '+${count}'
+index_modified = '!${count}'
+index_deleted = '✘${count}'
+index_typechanged = '~${count}'
+renamed = '»${count}'
+# 使用上面的精细状态，避免旧汇总符号造成重复显示。
+modified = ''
+staged = ''
+deleted = ''
+typechanged = ''
 
 [fill]
 symbol = ' '
@@ -119,6 +141,8 @@ disabled = false
 format = '[ $time]($style) '
 style = 'bold clock'
 time_format = '%H:%M'
+# 使用 IANA 时区名，跨平台统一北京时间；跟随本机可改为 'local'。
+utc_time_offset = 'Asia/Shanghai'
 
 [line_break]
 disabled = false
