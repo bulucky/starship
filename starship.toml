@@ -1,0 +1,129 @@
+"$schema" = 'https://starship.rs/config-schema.json'
+
+# 两行布局：系统、目录、Git 在左，时间在第一行右侧。
+format = '$os$directory$git_branch$git_commit$git_state$git_status$fill$time$line_break$character'
+palette = 'soft_pastel'
+add_newline = true
+
+# 柔和配色；所有模块沿用终端背景。
+[palettes.soft_pastel]
+blue = '#8aadf4'
+pink = '#ed8796'
+green = '#a6da95'
+purple = '#c6a0f6'
+clock = '#f5bde6'
+yellow = '#eed49f'
+
+[os]
+disabled = false
+format = '[$symbol]($style) '
+style = 'bold green'
+
+# Nerd Font 系统图标：根据当前操作系统自动选择。
+[os.symbols]
+Alpaquita = ''
+Alpine = ''
+AlmaLinux = ''
+Amazon = ''
+Android = ''
+AOSC = ''
+Arch = ''
+Artix = ''
+CachyOS = ''
+CentOS = ''
+Debian = ''
+DragonFly = ''
+Elementary = ''
+Emscripten = ''
+EndeavourOS = ''
+Fedora = ''
+FreeBSD = ''
+Garuda = '󰛓'
+Gentoo = ''
+HardenedBSD = '󰞌'
+Illumos = '󰈸'
+Ios = '󰀷'
+Kali = ''
+Linux = ''
+Mabox = ''
+Macos = ''
+Manjaro = ''
+Mariner = ''
+MidnightBSD = ''
+Mint = ''
+NetBSD = ''
+NixOS = ''
+Nobara = ''
+OpenBSD = '󰈺'
+openSUSE = ''
+OracleLinux = '󰌷'
+Pop = ''
+Raspbian = ''
+Redhat = ''
+RedHatEnterprise = ''
+RockyLinux = ''
+Redox = '󰀘'
+Solus = '󰠳'
+SUSE = ''
+Ubuntu = ''
+Unknown = ''
+Void = ''
+Windows = '󰍲'
+Zorin = ''
+
+[directory]
+format = '[ $path]($style)[$read_only]($read_only_style) '
+style = 'bold blue'
+read_only = ' 󰌾'
+read_only_style = 'pink'
+truncation_length = 3
+truncation_symbol = '…/'
+truncate_to_repo = false
+home_symbol = '~'
+
+[git_branch]
+symbol = ' '
+format = '[$symbol$branch]($style) '
+style = 'bold pink'
+
+# detached HEAD 时显示提交短哈希。
+[git_commit]
+format = '[ $hash]($style) '
+style = 'bold pink'
+only_detached = true
+
+[git_state]
+format = '[\($state( $progress_current/$progress_total)\)]($style) '
+style = 'bold purple'
+
+# 有变更时显示状态及数量，干净仓库不额外占位。
+[git_status]
+format = '([$all_status$ahead_behind]($style) )'
+style = 'bold yellow'
+conflicted = '≠${count} '
+ahead = '↑${count} '
+behind = '↓${count} '
+diverged = '↑${ahead_count} ↓${behind_count} '
+untracked = '?${count} '
+stashed = '≡${count} '
+modified = '!${count} '
+staged = '+${count} '
+renamed = '»${count} '
+deleted = '✘${count} '
+
+[fill]
+symbol = ' '
+
+[time]
+disabled = false
+format = '[ $time]($style) '
+style = 'bold clock'
+time_format = '%H:%M'
+
+[line_break]
+disabled = false
+
+[character]
+success_symbol = '[➜](bold green)'
+error_symbol = '[➜](bold pink)'
+vimcmd_symbol = '[❮](bold purple)'
