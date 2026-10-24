@@ -84,7 +84,7 @@ home_symbol = '~'
 before_repo_root_style = 'blue'
 repo_root_style = 'bold underline blue'
 repo_root_format = '[ ]($style)[$before_root_path]($before_repo_root_style)[$repo_root]($repo_root_style)[$path]($style)[$read_only]($read_only_style) '
-# 三个平台统一用 /，并保留 cd 时使用的符号链接路径。
+# 使用 / 分割，并保留 cd 时使用的符号链接路径。
 use_os_path_sep = false
 use_logical_path = true
 
@@ -105,7 +105,6 @@ only_detached = true
 format = '[\($state( $progress_current/$progress_total)\)]($style) '
 style = 'bold purple'
 
-# 需要 Starship >= 1.25：显式列出新变量，$all_status 不包含它们。
 # W = 工作区（未暂存）；S = 暂存区；干净时整组隐藏。
 [git_status]
 format = '([$conflicted]($style) )([W:$worktree_added$worktree_modified$worktree_deleted$worktree_typechanged]($style) )([S:$index_added$index_modified$index_deleted$renamed$index_typechanged]($style) )([$untracked]($style) )([$stashed]($style) )([$ahead_behind]($style) )'
