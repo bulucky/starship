@@ -1,7 +1,7 @@
 "$schema" = 'https://starship.rs/config-schema.json'
 
 # 两行布局：系统、目录、Git 在左，时间在第一行右侧。
-format = '$os$directory$git_branch$git_commit$git_state$git_status$fill$time$line_break$character'
+format = '$os$directory$git_branch$git_commit$git_state$git_status$fill${env_var.weather_blue}${env_var.weather_green}${env_var.weather_yellow}${env_var.weather_pink}$time$line_break$character'
 palette = 'soft_pastel'
 add_newline = true
 
@@ -134,6 +134,27 @@ typechanged = ''
 
 [fill]
 symbol = ' '
+
+# Shell 只设置一个温度档变量；天气图标无底色，复用现有调色板。
+[env_var.weather_blue]
+variable = 'STARSHIP_WEATHER_BLUE'
+format = '[$env_value]($style) '
+style = 'bold blue'
+
+[env_var.weather_green]
+variable = 'STARSHIP_WEATHER_GREEN'
+format = '[$env_value]($style) '
+style = 'bold green'
+
+[env_var.weather_yellow]
+variable = 'STARSHIP_WEATHER_YELLOW'
+format = '[$env_value]($style) '
+style = 'bold yellow'
+
+[env_var.weather_pink]
+variable = 'STARSHIP_WEATHER_PINK'
+format = '[$env_value]($style) '
+style = 'bold pink'
 
 [time]
 disabled = false

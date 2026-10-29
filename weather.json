@@ -1,0 +1,9 @@
+{
+  "_location": "上海市浦东新区：经度 121.54，纬度 31.22",
+  "latitude": 31.22,
+  "longitude": 121.54,
+  "refresh_seconds": 900,
+  "max_stale_seconds": 7200,
+  "retry_seconds": 300,
+  "temperature_thresholds_c": [10, 25, 32]
+}

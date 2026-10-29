@@ -1,0 +1,8 @@
+weather.local.json
+__pycache__/
+*.pyc
+
+# tests
+tests/
+
+WEATHER.md
