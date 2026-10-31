@@ -1,0 +1,2 @@
+# Zsh/Bash must receive LF line endings, including Windows checkouts.
+*.sh text eol=lf

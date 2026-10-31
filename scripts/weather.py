@@ -2,7 +2,7 @@
 # requires-python = ">=3.10"
 # dependencies = []
 # ///
-"""Cached Open-Meteo weather for Starship; stdout contains only band<TAB>icon.
+"""Cached Open-Meteo weather; prompt stdout is #rrggbb<TAB>hex codepoint.
 
 prompt never waits for HTTP. It schedules a detached worker when necessary.
 refresh is an explicit, synchronous diagnostic/setup command; it stays quiet.
@@ -10,75 +10,198 @@ refresh is an explicit, synchronous diagnostic/setup command; it stays quiet.
 
 from __future__ import annotations
 
+import argparse
+from copy import deepcopy
+from datetime import datetime, timedelta, timezone
 import hashlib
 import json
 import math
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 import tempfile
 import time
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 ROOT = Path(__file__).resolve().parents[1]
-COLORS = ("blue", "green", "yellow", "pink")
-# Nerd Fonts Material Design weather glyphs, not multicolor emoji.
-ICONS = {
-    "sun": "\U000f0599", "moon": "\U000f0594",
-    "partly_day": "\U000f0595", "partly_night": "\U000f0f31",
-    "cloud": "\U000f0590", "fog": "\U000f0591",
-    "rain": "\U000f0597", "pouring": "\U000f0596",
-    "snow": "\U000f0598", "sleet": "\U000f067f",
-    "storm": "\U000f0593",
+DEFAULT_ICONS = {
+    "sun": ["f522"], "moon": ["f4ee", "f0594"],
+    "partly_day": ["f0595"], "partly_night": ["f0f31"],
+    "cloud": ["f0c2"], "fog_day": ["f0591", "e303"],
+    "fog_night": ["f0591", "e346"], "rain_day": ["ef1c", "ef1e"],
+    "rain_night": ["ef1c", "ef1b"], "pouring": ["f0596"],
+    "snow": ["f2dc", "f0598"], "sleet_day": ["e362"],
+    "sleet_night": ["f067f"], "storm": ["f0593"],
+}
+DEFAULT_APPEARANCE = {
+    "timezone": "Asia/Shanghai",
+    "rest_icon": "f04b2",
+    # Ordered from the start of the active period, crossing midnight once.
+    # Between the final stop and the next first stop, hold the final color.
+    "color_stops": [
+        {"time": "06:00", "color": "#8aadf4"},
+        {"time": "12:00", "color": "#eed49f"},
+        {"time": "18:00", "color": "#ed8796"},
+        {"time": "22:00", "color": "#c6a0f6"},
+        {"time": "02:00", "color": "#8087a2"},
+    ],
+    "temperature": {
+        "neutral_c": 22, "cold_c": 10, "hot_c": 32, "max_mix": 0.2,
+        "cold_color": "#8aadf4", "hot_color": "#ed8796",
+    },
 }
 
 
-def number(value, low, high):
+def number(value, low, high, name="value"):
     if isinstance(value, bool):
-        raise ValueError("boolean is not a coordinate/temperature")
-    result = float(value)
+        raise ValueError(f"{name}: expected a number, not boolean")
+    try:
+        result = float(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"{name}: expected a number") from None
     if not math.isfinite(result) or not low <= result <= high:
-        raise ValueError("number out of range")
+        raise ValueError(f"{name}: must be between {low} and {high}")
     return result
 
 
-def settings(root=ROOT):
+def merge_settings(base, override, path="configuration"):
+    """Merge objects; replace arrays so local icon lists never append silently."""
+    if not isinstance(override, dict):
+        raise ValueError(f"{path}: expected an object")
+    for key, value in override.items():
+        if isinstance(base.get(key), dict):
+            merge_settings(base[key], value, f"{path}.{key}")
+        else:
+            base[key] = deepcopy(value)
+
+
+def minute_of_day(value):
+    if not isinstance(value, str) or not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", value):
+        raise ValueError(f"time: expected HH:MM, got {value!r}")
+    hour, minute = map(int, value.split(":"))
+    return hour * 60 + minute
+
+
+def rgb(value, name="color"):
+    if not isinstance(value, str) or not re.fullmatch(r"#[0-9a-fA-F]{6}", value):
+        raise ValueError(f"{name}: expected #rrggbb")
+    return tuple(int(value[index:index + 2], 16) for index in (1, 3, 5))
+
+
+def private_codepoint(code, name):
+    if not isinstance(code, str) or not re.fullmatch(r"[0-9a-fA-F]{4,6}", code):
+        raise ValueError(f"{name}: expected a hexadecimal Nerd Font codepoint")
+    point = int(code, 16)
+    if not (0xe000 <= point <= 0xf8ff or 0xf0000 <= point <= 0xffffd
+            or 0x100000 <= point <= 0x10fffd):
+        raise ValueError(f"{name}: expected a Unicode private-use codepoint")
+    return point
+
+
+def load_settings(root=ROOT):
+    """Read and merge JSON values without changing their representation."""
     config = {
         "latitude": None, "longitude": None, "refresh_seconds": 900,
         "max_stale_seconds": 7200, "retry_seconds": 300,
-        "temperature_thresholds_c": [10, 25, 32],
+        "icons": deepcopy(DEFAULT_ICONS), "appearance": deepcopy(DEFAULT_APPEARANCE),
     }
     for name in ("weather.json", "weather.local.json"):
         path = root / name
         if path.exists():
             value = json.loads(path.read_text(encoding="utf-8-sig"))
-            if not isinstance(value, dict):
-                raise ValueError("weather configuration must be an object")
-            config.update(value)
+            merge_settings(config, value, name)
     for key in ("latitude", "longitude"):
         override = os.environ.get("STARSHIP_WEATHER_" + key.upper())
         if override is not None:
             config[key] = override
-    if config.get("enabled", True) is False:
+    return config
+
+
+def settings(root=ROOT, require_location=True):
+    raw = load_settings(root)
+    config = {key: value for key, value in raw.items() if key not in ("icons", "appearance")}
+    if require_location and config.get("enabled", True) is False:
         return None
-    if config["latitude"] is None or config["longitude"] is None:
+    if require_location and (config["latitude"] is None or config["longitude"] is None):
         return None
-    config["latitude"] = number(config["latitude"], -90, 90)
-    config["longitude"] = number(config["longitude"], -180, 180)
+    if require_location:
+        config["latitude"] = number(config["latitude"], -90, 90, "latitude")
+        config["longitude"] = number(config["longitude"], -180, 180, "longitude")
     for key in ("refresh_seconds", "max_stale_seconds", "retry_seconds"):
-        config[key] = number(config[key], 60, 86400)
+        config[key] = number(config[key], 60, 86400, key)
     if config["max_stale_seconds"] < config["refresh_seconds"]:
         raise ValueError("max stale time must be >= refresh time")
-    thresholds = config["temperature_thresholds_c"]
-    if not isinstance(thresholds, list) or len(thresholds) != 3:
-        raise ValueError("three ordered temperature thresholds required")
-    thresholds = [number(value, -100, 100) for value in thresholds]
-    if not thresholds[0] < thresholds[1] < thresholds[2]:
-        raise ValueError("temperature thresholds must be increasing")
-    config["temperature_thresholds_c"] = thresholds
+    config["icons"] = parse_icons(raw["icons"])
+    config["appearance"] = parse_appearance(raw["appearance"])
     return config
+
+
+def parse_icons(raw):
+    icons = {}
+    for kind, codes in raw.items():
+        if kind not in DEFAULT_ICONS:
+            raise ValueError(f"icons.{kind}: unknown weather category")
+        if not isinstance(codes, list) or not codes:
+            raise ValueError(f"icons.{kind}: expected a nonempty array")
+        icons[kind] = tuple(dict.fromkeys(
+            private_codepoint(code, f"icons.{kind}[{index}]")
+            for index, code in enumerate(codes)))
+    return icons
+
+
+def parse_appearance(appearance):
+    """Compile display rules into a separate, consistently typed structure."""
+    for key in appearance:
+        if key not in DEFAULT_APPEARANCE:
+            raise ValueError(f"appearance.{key}: unknown setting")
+    zone = appearance["timezone"]
+    if not isinstance(zone, str) or not zone:
+        raise ValueError("appearance.timezone: expected an IANA timezone name")
+    try:
+        parsed_zone = ZoneInfo(zone)
+    except ZoneInfoNotFoundError:
+        if zone != "Asia/Shanghai":
+            raise ValueError(f"appearance.timezone: timezone data unavailable for {zone}") from None
+        # Modern Shanghai time; Windows Python need not install tzdata.
+        parsed_zone = timezone(timedelta(hours=8), name=zone)
+    stops = appearance["color_stops"]
+    if not isinstance(stops, list) or not 2 <= len(stops) <= 24:
+        raise ValueError("appearance.color_stops: expected 2 to 24 ordered stops")
+    compiled = []
+    for index, stop in enumerate(stops):
+        name = f"appearance.color_stops[{index}]"
+        if not isinstance(stop, dict) or set(stop) != {"time", "color"}:
+            raise ValueError(f"{name}: expected time and color")
+        try:
+            minute = minute_of_day(stop["time"])
+        except ValueError as error:
+            raise ValueError(f"{name}.{error}") from None
+        if compiled:
+            minute = compiled[0][0] + (minute - compiled[0][0]) % 1440
+            if minute <= compiled[-1][0]:
+                raise ValueError(f"{name}.time: stops must follow the daily cycle without duplicates")
+        compiled.append((minute, rgb(stop["color"], f"{name}.color")))
+    temperature = dict(appearance["temperature"])
+    for key in temperature:
+        if key not in DEFAULT_APPEARANCE["temperature"]:
+            raise ValueError(f"appearance.temperature.{key}: unknown setting")
+    for key in ("cold_c", "neutral_c", "hot_c"):
+        temperature[key] = number(temperature[key], -100, 100, f"appearance.temperature.{key}")
+    if not temperature["cold_c"] < temperature["neutral_c"] < temperature["hot_c"]:
+        raise ValueError("appearance.temperature: require cold_c < neutral_c < hot_c")
+    temperature["max_mix"] = number(temperature["max_mix"], 0, 1, "appearance.temperature.max_mix")
+    for key in ("cold_color", "hot_color"):
+        temperature[key] = rgb(temperature[key], f"appearance.temperature.{key}")
+    return {
+        "timezone": parsed_zone,
+        "color_stops": tuple(compiled),
+        "temperature": temperature,
+        "rest_icon": private_codepoint(appearance["rest_icon"], "appearance.rest_icon"),
+    }
 
 
 def cache_directory():
@@ -125,7 +248,7 @@ def write_json(path, value):
             temporary.unlink(missing_ok=True)
 
 
-def icon_for(code, is_day):
+def weather_kind(code, is_day):
     if type(code) is not int or type(is_day) is not int or is_day not in (0, 1):
         return None
     if code in (0, 1):
@@ -135,26 +258,74 @@ def icon_for(code, is_day):
     elif code == 3:
         name = "cloud"
     elif code in (45, 48):
-        name = "fog"
+        name = "fog_day" if is_day else "fog_night"
     elif code in (51, 53, 55, 61, 63, 80, 81):
-        name = "rain"
+        name = "rain_day" if is_day else "rain_night"
     elif code in (65, 82):
         name = "pouring"
     elif code in (56, 57, 66, 67):
-        name = "sleet"
+        name = "sleet_day" if is_day else "sleet_night"
     elif code in (71, 73, 75, 77, 85, 86):
         name = "snow"
     elif code in (95, 96, 97, 99):
         name = "storm"
     else:
         return None
-    return ICONS[name]
+    return name
+
+
+def icon_for(config, kind, seed):
+    """Stable for a cache revision, independent of Python's randomized hash()."""
+    candidates = config["icons"][kind]
+    codes = ",".join(f"{point:x}" for point in candidates)
+    identity = f'{config["latitude"]},{config["longitude"]}:{seed}:{kind}:{codes}'
+    choice = int.from_bytes(hashlib.sha256(identity.encode("utf-8")).digest()[:8], "big")
+    return candidates[choice % len(candidates)]
+
+
+def mix_color(first, second, fraction):
+    return tuple(round(a + (b - a) * fraction) for a, b in zip(first, second))
+
+
+def cycle_minute(appearance, now):
+    local = datetime.fromtimestamp(now, appearance["timezone"])
+    minute = local.hour * 60 + local.minute + local.second / 60
+    start = appearance["color_stops"][0][0]
+    return start + (minute - start) % 1440
+
+
+def is_rest(config, now):
+    appearance = config["appearance"]
+    return cycle_minute(appearance, now) >= appearance["color_stops"][-1][0]
+
+
+def color_at(config, now, temperature_c):
+    appearance = config["appearance"]
+    minute = cycle_minute(appearance, now)
+    stops = appearance["color_stops"]
+    if minute >= stops[-1][0]:
+        color = stops[-1][1]
+    else:
+        for (start, first), (end, second) in zip(stops, stops[1:]):
+            if start <= minute < end:
+                color = mix_color(first, second, (minute - start) / (end - start))
+                break
+        temp = config["appearance"]["temperature"]
+        delta = temperature_c - temp["neutral_c"]
+        target = temp["cold_color"] if delta < 0 else temp["hot_color"]
+        span = temp["neutral_c"] - temp["cold_c"] if delta < 0 else temp["hot_c"] - temp["neutral_c"]
+        amount = temp["max_mix"] * min(1, abs(delta) / span)
+        # The final segment (22:00-02:00 by default) is the rest transition:
+        # fade both the base color and temperature influence toward rest.
+        fade = min(1, (stops[-1][0] - minute) / (stops[-1][0] - stops[-2][0]))
+        color = mix_color(color, target, amount * fade)
+    return "#" + "".join(f"{channel:02x}" for channel in color)
 
 
 def validated_current(value):
     if not isinstance(value, dict):
         raise ValueError("missing current conditions")
-    if icon_for(value.get("weather_code"), value.get("is_day")) is None:
+    if weather_kind(value.get("weather_code"), value.get("is_day")) is None:
         raise ValueError("unsupported weather code or day/night flag")
     return {
         "weather_code": value["weather_code"], "is_day": value["is_day"],
@@ -171,15 +342,18 @@ def age(record, key, now):
 
 
 def display(config, data, now):
+    if is_rest(config, now):
+        point = config["appearance"]["rest_icon"]
+        return f'{color_at(config, now, 0)}\t{point:x}'
     if age(data, "fetched_at", now) > config["max_stale_seconds"]:
         return ""
     try:
         current = validated_current(data.get("current"))
     except (ValueError, TypeError):
         return ""
-    band = sum(current["temperature_2m"] >= limit
-               for limit in config["temperature_thresholds_c"])
-    return COLORS[band] + "\t" + icon_for(current["weather_code"], current["is_day"])
+    kind = weather_kind(current["weather_code"], current["is_day"])
+    color = color_at(config, now, current["temperature_2m"])
+    return color + "\t" + f'{icon_for(config, kind, data["fetched_at"]):x}'
 
 
 def acquire_lock(lock, now):
@@ -235,6 +409,9 @@ def spawn_worker():
 
 
 def prompt(config, locations, now):
+    # Rest is independent of weather availability; resume refresh on waking.
+    if is_rest(config, now):
+        return display(config, {}, now)
     data = read_json(locations["data"])
     output = display(config, data, now)
     attempt = read_json(locations["attempt"])
@@ -254,14 +431,70 @@ def prompt(config, locations, now):
     return output
 
 
-def main():
-    mode = sys.argv[1] if len(sys.argv) == 2 else "prompt"
-    if mode not in ("prompt", "refresh", "worker"):
-        return 2
+def preview_times(appearance):
+    """Sample configured stops, segment midpoints, and the middle of rest."""
+    minutes = [minute for minute, _ in appearance["color_stops"]]
+    samples = []
+    for start, end in zip(minutes, minutes[1:] + [minutes[0] + 1440]):
+        samples.extend((start, (start + end) // 2))
+    return [f"{minute % 1440 // 60:02d}:{minute % 60:02d}"
+            for minute in dict.fromkeys(samples)]
+
+
+def preview(config, options):
+    """Render synthetic samples, without reading cache or scheduling HTTP."""
+    temp = number(options.temperature, -100, 100, "--temperature")
+    times = [options.time] if options.time else preview_times(config["appearance"])
+    today = datetime.now(config["appearance"]["timezone"])
+    print(f'Offline preview | {config["appearance"]["timezone"]} | {temp:g} C')
+    for clock in times:
+        minute = minute_of_day(clock)
+        instant = today.replace(hour=minute // 60, minute=minute % 60,
+                                second=0, microsecond=0).timestamp()
+        # Synthetic daylight only for this preview; live data uses is_day.
+        kind = options.condition or ("sun" if 6 * 60 <= minute < 18 * 60 else "moon")
+        color = color_at(config, instant, temp)
+        channels = ";".join(str(channel) for channel in rgb(color))
+        if is_rest(config, instant):
+            kind = "rest"
+            point = config["appearance"]["rest_icon"]
+        else:
+            point = icon_for(config, kind, options.seed)
+        glyph = chr(point)
+        print(f'{clock}  \x1b[1;38;2;{channels}m{glyph}\x1b[0m '
+              f'\x1b[1;38;2;245;189;230m {clock}\x1b[0m  {color}  {kind}')
+    # Also show every configured candidate, including alternatives not drawn.
+    if not options.condition:
+        print("\nConfigured icons:")
+        candidates = dict(config["icons"], rest=(config["appearance"]["rest_icon"],))
+        for kind, points in candidates.items():
+            sample_color = (";".join(map(str, config["appearance"]["color_stops"][-1][1]))
+                            if kind == "rest" else "198;160;246")
+            samples = "  ".join(f'\x1b[1;38;2;{sample_color}m{chr(point)}\x1b[0m '
+                                f'{point:x}' for point in points)
+            print(f'{kind:14} {samples}')
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    commands = parser.add_subparsers(dest="mode")
+    for mode_name in ("prompt", "refresh", "worker"):
+        commands.add_parser(mode_name)
+    preview_parser = commands.add_parser("preview", help="offline color and icon samples")
+    preview_parser.add_argument("--time", help="simulate an HH:MM in the configured timezone")
+    preview_parser.add_argument("--temperature", type=float, default=22)
+    preview_parser.add_argument("--condition", choices=tuple(DEFAULT_ICONS))
+    preview_parser.add_argument("--seed", type=int, default=0, help="change the candidate selection")
+    options = parser.parse_args(argv)
+    mode = options.mode or "prompt"
     locations = None
     locked = False
     try:
-        config = settings()
+        config = settings(require_location=mode != "preview")
+        if mode == "preview":
+            sys.stdout.reconfigure(encoding="utf-8")
+            preview(config, options)
+            return 0
         if config is None:
             return 0
         locations = paths(config)
@@ -280,8 +513,8 @@ def main():
         return 0
     except Exception as error:
         # A prompt enhancement must not print errors into the shell.
-        if mode == "refresh":
-            print(f"Weather refresh failed: {error}", file=sys.stderr)
+        if mode in ("refresh", "preview"):
+            print(f"Weather {mode} failed: {error}", file=sys.stderr)
         return 0 if mode == "prompt" else 1
     finally:
         if locked and locations is not None:

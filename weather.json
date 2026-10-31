@@ -5,5 +5,39 @@
   "refresh_seconds": 900,
   "max_stale_seconds": 7200,
   "retry_seconds": 300,
-  "temperature_thresholds_c": [10, 25, 32]
+  "icons": {
+    "sun": ["f522"],
+    "moon": ["f4ee", "f0594"],
+    "partly_day": ["f0595"],
+    "partly_night": ["f0f31"],
+    "cloud": ["f0c2"],
+    "fog_day": ["f0591", "e303"],
+    "fog_night": ["f0591", "e346"],
+    "rain_day": ["ef1c", "ef1e"],
+    "rain_night": ["ef1c", "ef1b"],
+    "pouring": ["f0596"],
+    "snow": ["f2dc", "f0598"],
+    "sleet_day": ["e362"],
+    "sleet_night": ["f067f"],
+    "storm": ["f0593"]
+  },
+  "appearance": {
+    "timezone": "Asia/Shanghai",
+    "rest_icon": "f04b2",
+    "color_stops": [
+      {"time": "06:00", "color": "#8aadf4"},
+      {"time": "12:00", "color": "#eed49f"},
+      {"time": "18:00", "color": "#ed8796"},
+      {"time": "22:00", "color": "#c6a0f6"},
+      {"time": "02:00", "color": "#8087a2"}
+    ],
+    "temperature": {
+      "neutral_c": 22,
+      "cold_c": 10,
+      "hot_c": 32,
+      "max_mix": 0.2,
+      "cold_color": "#8aadf4",
+      "hot_color": "#ed8796"
+    }
+  }
 }

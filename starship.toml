@@ -1,11 +1,11 @@
 "$schema" = 'https://starship.rs/config-schema.json'
 
-# 两行布局：系统、目录、Git 在左，时间在第一行右侧。
-format = '$os$directory$git_branch$git_commit$git_state$git_status$fill${env_var.weather_blue}${env_var.weather_green}${env_var.weather_yellow}${env_var.weather_pink}$time$line_break$character'
+# 两行布局：系统、目录、Git 在左，时间在第一行右侧
+format = '$os$directory$git_branch$git_commit$git_state$git_status$fill${env_var.weather}$time$line_break$character'
 palette = 'soft_pastel'
 add_newline = true
 
-# 柔和配色；所有模块沿用终端背景。
+# 柔和配色；所有模块沿用终端背景
 [palettes.soft_pastel]
 blue = '#8aadf4'
 pink = '#ed8796'
@@ -19,7 +19,7 @@ disabled = false
 format = '[$symbol]($style) '
 style = 'bold green'
 
-# Nerd Font 系统图标：根据当前操作系统自动选择。
+# Nerd Font 系统图标：根据当前操作系统自动选择
 [os.symbols]
 Alpaquita = ''
 Alpine = ''
@@ -80,11 +80,11 @@ truncation_length = 3
 truncation_symbol = '…/'
 truncate_to_repo = false
 home_symbol = '~'
-# 仓库根目录加下划线，保留蓝色；父路径使用普通字重。
+# 仓库根目录加下划线，保留蓝色；父路径使用普通字重
 before_repo_root_style = 'blue'
 repo_root_style = 'bold underline blue'
 repo_root_format = '[ ]($style)[$before_root_path]($before_repo_root_style)[$repo_root]($repo_root_style)[$path]($style)[$read_only]($read_only_style) '
-# 使用 / 分割，并保留 cd 时使用的符号链接路径。
+# 使用 / 分割，并保留 cd 时使用的符号链接路径
 use_os_path_sep = false
 use_logical_path = true
 
@@ -92,10 +92,10 @@ use_logical_path = true
 symbol = ' '
 format = '[$symbol$branch]($style) '
 style = 'bold pink'
-# detached HEAD 时由 git_commit 显示哈希，避免重复显示 HEAD。
+# detached HEAD 时由 git_commit 显示哈希，避免重复显示 HEAD
 only_attached = true
 
-# detached HEAD 时显示提交短哈希。
+# detached HEAD 时显示提交短哈希
 [git_commit]
 format = '[ $hash]($style) '
 style = 'bold pink'
@@ -105,7 +105,7 @@ only_detached = true
 format = '[\($state( $progress_current/$progress_total)\)]($style) '
 style = 'bold purple'
 
-# W = 工作区（未暂存）；S = 暂存区；干净时整组隐藏。
+# W = 工作区（未暂存）；S = 暂存区；干净时整组隐藏
 [git_status]
 format = '([$conflicted]($style) )([W:$worktree_added$worktree_modified$worktree_deleted$worktree_typechanged]($style) )([S:$index_added$index_modified$index_deleted$renamed$index_typechanged]($style) )([$untracked]($style) )([$stashed]($style) )([$ahead_behind]($style) )'
 style = 'bold yellow'
@@ -115,8 +115,6 @@ behind = '↓${count}'
 diverged = '↑${ahead_count}↓${behind_count}'
 untracked = '?${count}'
 stashed = '≡${count}'
-# + 新增、! 修改、✘ 删除、» 重命名、~ 类型变化。
-# worktree_added 对应 git add -N；普通新文件由 untracked 单独计数。
 worktree_added = '+${count}'
 worktree_modified = '!${count}'
 worktree_deleted = '✘${count}'
@@ -126,7 +124,6 @@ index_modified = '!${count}'
 index_deleted = '✘${count}'
 index_typechanged = '~${count}'
 renamed = '»${count}'
-# 使用上面的精细状态，避免旧汇总符号造成重复显示。
 modified = ''
 staged = ''
 deleted = ''
@@ -135,33 +132,17 @@ typechanged = ''
 [fill]
 symbol = ' '
 
-# Shell 只设置一个温度档变量；天气图标无底色，复用现有调色板。
-[env_var.weather_blue]
-variable = 'STARSHIP_WEATHER_BLUE'
-format = '[$env_value]($style) '
-style = 'bold blue'
-
-[env_var.weather_green]
-variable = 'STARSHIP_WEATHER_GREEN'
-format = '[$env_value]($style) '
-style = 'bold green'
-
-[env_var.weather_yellow]
-variable = 'STARSHIP_WEATHER_YELLOW'
-format = '[$env_value]($style) '
-style = 'bold yellow'
-
-[env_var.weather_pink]
-variable = 'STARSHIP_WEATHER_PINK'
-format = '[$env_value]($style) '
-style = 'bold pink'
+# 天气+温度动态图标
+[env_var.weather]
+variable = 'STARSHIP_WEATHER'
+format = '$env_value '
 
 [time]
 disabled = false
 format = '[ $time]($style) '
 style = 'bold clock'
 time_format = '%H:%M'
-# 使用 IANA 时区名，跨平台统一北京时间；跟随本机可改为 'local'。
+# 使用 IANA 时区名
 utc_time_offset = 'Asia/Shanghai'
 
 [line_break]

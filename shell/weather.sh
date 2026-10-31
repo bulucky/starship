@@ -1,8 +1,28 @@
 # Source AFTER starship init; compatible with Bash and Zsh on Linux/macOS.
 
 _starship_weather_clear() {
-    unset STARSHIP_WEATHER_BLUE STARSHIP_WEATHER_GREEN
-    unset STARSHIP_WEATHER_YELLOW STARSHIP_WEATHER_PINK
+    unset STARSHIP_WEATHER
+}
+
+# Clear values left by the previous four-band implementation on re-source.
+unset STARSHIP_WEATHER_BLUE STARSHIP_WEATHER_GREEN
+unset STARSHIP_WEATHER_YELLOW STARSHIP_WEATHER_PINK
+
+_starship_weather_accept() {
+    local _sw_color _sw_code _sw_hex _sw_point
+    [[ "$1" != *$'\n'* && "$1" != *$'\r'* ]] || return 1
+    IFS=$'\t' read -r _sw_color _sw_code <<< "$1"
+    [[ "$_sw_color" =~ ^#[0-9a-fA-F]{6}$ ]] || return 1
+    [[ "$_sw_code" =~ ^[0-9a-fA-F]{4,6}$ ]] || return 1
+    _sw_point=$((16#$_sw_code))
+    (( (_sw_point >= 0xe000 && _sw_point <= 0xf8ff) ||
+       (_sw_point >= 0xf0000 && _sw_point <= 0xffffd) ||
+       (_sw_point >= 0x100000 && _sw_point <= 0x10fffd) )) || return 1
+    _sw_hex=${_sw_color#\#}
+    printf -v STARSHIP_WEATHER '\033[1;38;2;%d;%d;%dm%b\033[0m' \
+        "$((16#${_sw_hex:0:2}))" "$((16#${_sw_hex:2:2}))" \
+        "$((16#${_sw_hex:4:2}))" "\\U$_sw_code"
+    export STARSHIP_WEATHER
 }
 
 # The private subshell keeps its coprocess/FDs out of the user's shell.
@@ -51,7 +71,7 @@ _starship_weather_read() (
 )
 
 _starship_weather_update() {
-    local _sw_root _sw_payload _sw_band _sw_icon
+    local _sw_root _sw_payload
     if ! command -v uv >/dev/null 2>&1; then
         _starship_weather_clear
         return 0
@@ -71,13 +91,7 @@ _starship_weather_update() {
     # No interpreter downloads, package installs, or HTTP in the prompt path.
     _sw_payload="$(_starship_weather_read run --no-project --no-config --no-python-downloads \
         --offline --python '>=3.10' "$_sw_root/scripts/weather.py" prompt 2>/dev/null)" || return 0
-    IFS=$'\t' read -r _sw_band _sw_icon <<< "$_sw_payload"
-    case "$_sw_band" in
-        blue)   export STARSHIP_WEATHER_BLUE="$_sw_icon" ;;
-        green)  export STARSHIP_WEATHER_GREEN="$_sw_icon" ;;
-        yellow) export STARSHIP_WEATHER_YELLOW="$_sw_icon" ;;
-        pink)   export STARSHIP_WEATHER_PINK="$_sw_icon" ;;
-    esac
+    _starship_weather_accept "$_sw_payload" || _starship_weather_clear
     return 0
 }
 
